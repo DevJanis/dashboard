@@ -1,29 +1,86 @@
 ---
 import Base from '../layouts/Base.astro';
+
 const base = import.meta.env.BASE_URL;
-let overview = null, insights = null;
+
+// Robust join for URLs under BASE_URL (GitHub Pages base path)
+const dataUrl = (p: string) => new URL(p.replace(/^\//, ''), `https://dummy${base}`).pathname;
+
+let overview: any = null;
+let insights: any = null;
+let fetchErrors: string[] = [];
+
 try {
-  const r1 = await fetch(base + 'data/derived/overview.json').catch(()=>null);
-  if(r1?.ok) overview = await r1.json();
-  const r2 = await fetch(base + 'data/derived/insights.json').catch(()=>null);
-  if(r2?.ok) insights = await r2.json();
-} catch {}
+  const r1 = await fetch(dataUrl('data/derived/overview.json')).catch(() => null);
+  if (r1?.ok) {
+    overview = await r1.json();
+  } else {
+    fetchErrors.push(`overview.json: ${r1 ? `HTTP ${r1.status}` : 'fetch failed'}`);
+  }
+
+  const r2 = await fetch(dataUrl('data/derived/insights.json')).catch(() => null);
+  if (r2?.ok) {
+    insights = await r2.json();
+  } else {
+    fetchErrors.push(`insights.json: ${r2 ? `HTTP ${r2.status}` : 'fetch failed'}`);
+  }
+} catch (e: any) {
+  fetchErrors.push(e?.message ?? String(e));
+}
 ---
+
 <Base title="Overview">
   <h1>Overview</h1>
+
+  {fetchErrors.length > 0 && (
+    <div class="card">
+      <h2>Data loading</h2>
+      {fetchErrors.map(err => <p class="placeholder">{err}</p>)}
+      <p class="placeholder">
+        Expected URLs:
+        <br />
+        {dataUrl('data/derived/overview.json')}
+        <br />
+        {dataUrl('data/derived/insights.json')}
+      </p>
+    </div>
+  )}
+
   {overview ? (
     <div class="card">
-      <p><strong>Status:</strong> {overview.status}</p>
-      {overview.highlights?.map(h => <p class="placeholder">{h}</p>)}
+      <p><strong>Status:</strong> {overview.status ?? 'n/a'}</p>
+
+      {overview.current_week && (
+        <div style="margin-top:.75rem">
+          <h2>Current week</h2>
+          <p class="placeholder">
+            Distance: {overview.current_week.distance_km ?? '—'} km ·
+            Elevation: {overview.current_week.elevation_m ?? '—'} m ·
+            Time: {overview.current_week.training_time_min ?? '—'} min ·
+            Sessions: {overview.current_week.session_count ?? '—'}
+          </p>
+        </div>
+      )}
+
+      {Array.isArray(overview.highlights) && overview.highlights.length > 0 && (
+        <div style="margin-top:.75rem">
+          <h2>Highlights</h2>
+          {overview.highlights.map((h: string) => <p class="placeholder">{h}</p>)}
+        </div>
+      )}
     </div>
   ) : (
     <div class="card"><p class="placeholder">overview.json not yet available.</p></div>
   )}
-  {insights && (
+
+  {insights ? (
     <div class="card">
       <h2>Insights</h2>
-      {insights.training?.map(t => <p>Training: {t}</p>)}
-      {insights.recovery?.map(r => <p>Recovery: {r}</p>)}
+      {Array.isArray(insights.training) && insights.training.map((t: string) => <p>Training: {t}</p>)}
+      {Array.isArray(insights.recovery) && insights.recovery.map((r: string) => <p>Recovery: {r}</p>)}
+      {Array.isArray(insights.performance) && insights.performance.map((p: string) => <p>Performance: {p}</p>)}
     </div>
+  ) : (
+    <div class="card"><p class="placeholder">insights.json not yet available.</p></div>
   )}
 </Base>
