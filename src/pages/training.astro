@@ -1,9 +1,148 @@
 ---
 import Base from '../layouts/Base.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
+
 <Base title="Training">
   <h1>Training</h1>
-  <div class="card">
-    <p class="placeholder">Placeholder - weekly_training.json will populate this page once the data pipeline runs.</p>
+
+  <!-- KPI Cards -->
+  <div id="kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem">
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Letzte Woche</p>
+      <p id="kpi-dist" style="font-size:1.6rem;font-weight:700;color:#38bdf8">—</p>
+      <p style="color:#64748b;font-size:.8rem">km</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Höhenmeter</p>
+      <p id="kpi-elev" style="font-size:1.6rem;font-weight:700;color:#34d399">—</p>
+      <p style="color:#64748b;font-size:.8rem">m</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Sessions</p>
+      <p id="kpi-sess" style="font-size:1.6rem;font-weight:700;color:#a78bfa">—</p>
+      <p style="color:#64748b;font-size:.8rem">diese Woche</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Long Run</p>
+      <p id="kpi-long" style="font-size:1.6rem;font-weight:700;color:#fb923c">—</p>
+      <p style="color:#64748b;font-size:.8rem">km</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">TRIMP</p>
+      <p id="kpi-trimp" style="font-size:1.6rem;font-weight:700;color:#f472b6">—</p>
+      <p style="color:#64748b;font-size:.8rem">Belastung</p>
+    </div>
   </div>
+
+  <!-- Chart: Wochenvolumen -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Wochenvolumen (km) — letzte 16 Wochen</h2>
+    <div id="chart-dist" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Chart: Höhenmeter -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Höhenmeter — letzte 16 Wochen</h2>
+    <div id="chart-elev" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Chart: Long Run -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Long Run (km) — letzte 16 Wochen</h2>
+    <div id="chart-long" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Tabelle -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Letzte 8 Wochen im Detail</h2>
+    <div style="overflow-x:auto">
+      <table id="week-table" style="width:100%;border-collapse:collapse;font-size:.85rem">
+        <thead>
+          <tr style="border-bottom:1px solid #334155;color:#94a3b8">
+            <th style="text-align:left;padding:.4rem .6rem">Woche</th>
+            <th style="text-align:right;padding:.4rem .6rem">km</th>
+            <th style="text-align:right;padding:.4rem .6rem">Hm</th>
+            <th style="text-align:right;padding:.4rem .6rem">Sessions</th>
+            <th style="text-align:right;padding:.4rem .6rem">Long Run</th>
+            <th style="text-align:right;padding:.4rem .6rem">TRIMP</th>
+          </tr>
+        </thead>
+        <tbody id="week-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p id="loading-msg" class="placeholder" style="text-align:center;padding:2rem">Daten werden geladen…</p>
 </Base>
+
+<script define:vars={{ base }}>
+const dataUrl = (p) => base + '/' + p;
+
+function barChart(containerId, weeks, key, color, unit) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const vals = weeks.map(w => w[key]);
+  const max = Math.max(...vals, 1);
+  const W = 44, H = 120, gap = 4;
+  const total = weeks.length * (W + gap) - gap;
+
+  let svg = `<svg viewBox="0 0 ${total} ${H + 30}" style="min-width:${total}px;width:100%;display:block">`;
+  weeks.forEach((w, i) => {
+    const x = i * (W + gap);
+    const barH = Math.max(2, (w[key] / max) * H);
+    const y = H - barH;
+    const label = w.iso_week.replace(/^\d{4}-/, '');
+    svg += `<rect x="${x}" y="${y}" width="${W}" height="${barH}" rx="3" fill="${color}" opacity="0.85"/>`;
+    svg += `<text x="${x + W/2}" y="${H + 14}" text-anchor="middle" fill="#64748b" font-size="9">${label}</text>`;
+    svg += `<text x="${x + W/2}" y="${y - 4}" text-anchor="middle" fill="#e2e8f0" font-size="9">${w[key] % 1 === 0 ? w[key] : w[key].toFixed(1)}</text>`;
+  });
+  svg += '</svg>';
+  el.innerHTML = svg;
+}
+
+async function load() {
+  const msg = document.getElementById('loading-msg');
+  try {
+    const r = await fetch(dataUrl('data/derived/weekly_training.json'));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const weeks = data.weeks ?? [];
+    if (weeks.length === 0) throw new Error('Keine Wochen-Daten');
+
+    msg.style.display = 'none';
+
+    // KPIs aus letzter Woche
+    const last = weeks[weeks.length - 1];
+    document.getElementById('kpi-dist').textContent  = last.distance_km.toFixed(1);
+    document.getElementById('kpi-elev').textContent  = Math.round(last.elevation_m);
+    document.getElementById('kpi-sess').textContent  = last.session_count;
+    document.getElementById('kpi-long').textContent  = last.long_run_km.toFixed(1);
+    document.getElementById('kpi-trimp').textContent = Math.round(last.trimp);
+
+    // Charts: letzte 16 Wochen
+    const recent16 = weeks.slice(-16);
+    barChart('chart-dist', recent16, 'distance_km', '#38bdf8', 'km');
+    barChart('chart-elev', recent16, 'elevation_m', '#34d399', 'm');
+    barChart('chart-long', recent16, 'long_run_km', '#fb923c', 'km');
+
+    // Tabelle: letzte 8 Wochen
+    const recent8 = weeks.slice(-8).reverse();
+    const tbody = document.getElementById('week-tbody');
+    tbody.innerHTML = recent8.map((w, i) => `
+      <tr style="border-bottom:1px solid #1e293b;${i === 0 ? 'background:#1e3a4a' : ''}">
+        <td style="padding:.4rem .6rem;color:${i === 0 ? '#38bdf8' : '#e2e8f0'}">${w.iso_week}${i === 0 ? ' ◀ aktuell' : ''}</td>
+        <td style="text-align:right;padding:.4rem .6rem">${w.distance_km.toFixed(1)}</td>
+        <td style="text-align:right;padding:.4rem .6rem">${Math.round(w.elevation_m)}</td>
+        <td style="text-align:right;padding:.4rem .6rem">${w.session_count}</td>
+        <td style="text-align:right;padding:.4rem .6rem">${w.long_run_km.toFixed(1)}</td>
+        <td style="text-align:right;padding:.4rem .6rem">${Math.round(w.trimp)}</td>
+      </tr>`).join('');
+
+  } catch(e) {
+    msg.textContent = `Fehler beim Laden: ${e.message}`;
+  }
+}
+
+load();
+</script>
