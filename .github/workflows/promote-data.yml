@@ -1,1 +1,71 @@
-#
+name: Promote Dashboard Data
+
+on:
+  push:
+    branches:
+      - data-sync
+    paths:
+      - data/derived/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  promote-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout data-sync
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: data-sync
+
+      - name: Fetch main branch
+        run: git fetch origin main
+
+      - name: Validate changed files
+        run: |
+          set -e
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changes detected against main. Exiting."
+            exit 0
+          fi
+
+          INVALID_FILES=$(echo "$CHANGED_FILES" | grep -v '^data/derived/' || true)
+
+          if [ -n "$INVALID_FILES" ]; then
+            echo "The following files are not allowed in data-sync promotion:"
+            echo "$INVALID_FILES"
+            exit 1
+          fi
+
+      - name: Validate JSON files
+        run: |
+          set -e
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          derived_dir = Path("data/derived")
+          for path in sorted(derived_dir.glob("*.json")):
+              with path.open("r", encoding="utf-8") as handle:
+                  json.load(handle)
+              print(f"Validated {path}")
+          PY
+
+      - name: Merge data-sync into main
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout main
+          git pull origin main
+          git merge --no-ff data-sync -m "chore: promote dashboard data from data-sync"
+          git push origin main
