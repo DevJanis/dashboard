@@ -3,7 +3,228 @@ import Base from '../layouts/Base.astro';
 ---
 <Base title="Season">
   <h1>Season</h1>
+
+  <!-- Aktuelle Phase -->
+  <div class="card phase-card" id="phase-card">
+    <div class="phase-row">
+      <div>
+        <span class="meta-label">Aktuelle Phase</span>
+        <span class="phase-name" id="current-phase">-</span>
+      </div>
+      <div>
+        <span class="meta-label">Wochenfokus</span>
+        <span class="week-focus" id="week-focus">-</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zielrennen -->
   <div class="card">
-    <p class="placeholder">Placeholder - season_timeline.json will populate this page once the data pipeline runs.</p>
+    <h2>Zielrennen</h2>
+    <div class="races" id="races">
+      <p class="placeholder">Lade Daten...</p>
+    </div>
+  </div>
+
+  <!-- Saisonverlauf / Timeline -->
+  <div class="card">
+    <h2>Saisonverlauf</h2>
+    <div class="timeline" id="timeline">
+      <p class="placeholder">Lade Daten...</p>
+    </div>
+  </div>
+
+  <!-- Block-Uebersicht Tabelle -->
+  <div class="card">
+    <h2>Trainingsblöcke</h2>
+    <div class="table-wrap">
+      <table id="blocks-table">
+        <thead>
+          <tr>
+            <th>Block</th>
+            <th>Phase</th>
+            <th>Zeitraum</th>
+            <th>Wochen</th>
+            <th>Fokus</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="blocks-tbody">
+          <tr><td colspan="6" class="placeholder">Lade Daten...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </Base>
+
+<style>
+  /* Phase Card */
+  .phase-card{background:#1e293b}
+  .phase-row{display:flex;gap:2.5rem;flex-wrap:wrap;align-items:flex-start}
+  .meta-label{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.2rem}
+  .phase-name{font-size:1.3rem;font-weight:700;color:#38bdf8;display:block}
+  .week-focus{font-size:.9rem;color:#94a3b8;display:block;max-width:400px}
+
+  /* Races */
+  .races{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+  .race-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:.35rem;position:relative;overflow:hidden}
+  .race-card.a-rennen{border-color:#f59e0b}
+  .race-card.b-rennen{border-color:#818cf8}
+  .race-card.c-rennen{border-color:#34d399}
+  .race-badge{font-size:.65rem;font-weight:700;padding:.15rem .45rem;border-radius:3px;display:inline-block;width:fit-content;margin-bottom:.2rem}
+  .badge-a{background:#78350f;color:#fcd34d}
+  .badge-b{background:#1e1b4b;color:#a5b4fc}
+  .badge-c{background:#14532d;color:#86efac}
+  .race-name{font-size:1rem;font-weight:600;color:#f1f5f9}
+  .race-date{font-size:.8rem;color:#94a3b8}
+  .race-location{font-size:.78rem;color:#64748b}
+  .race-stats{display:flex;gap:.75rem;margin-top:.35rem;flex-wrap:wrap}
+  .race-stat{font-size:.78rem;color:#94a3b8}
+  .countdown{font-size:.75rem;font-weight:600;color:#38bdf8;margin-top:.25rem}
+
+  /* Timeline */
+  .timeline{display:flex;flex-direction:column;gap:0;position:relative;padding-left:1.5rem}
+  .timeline::before{content:'';position:absolute;left:.6rem;top:0;bottom:0;width:2px;background:#334155}
+  .tl-item{position:relative;padding:.6rem 0 .6rem 1rem;display:flex;align-items:flex-start;gap:1rem}
+  .tl-dot{position:absolute;left:-1.5rem;top:.85rem;width:12px;height:12px;border-radius:50%;border:2px solid #334155;background:#0f172a;flex-shrink:0}
+  .tl-dot.done{background:#334155;border-color:#475569}
+  .tl-dot.active{background:#38bdf8;border-color:#38bdf8;box-shadow:0 0 0 3px rgba(56,189,248,.2)}
+  .tl-dot.planned{background:#0f172a;border-color:#334155}
+  .tl-content{flex:1;min-width:0}
+  .tl-header{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+  .tl-name{font-size:.9rem;font-weight:600;color:#e2e8f0}
+  .tl-status-badge{font-size:.65rem;padding:.1rem .4rem;border-radius:3px;font-weight:600}
+  .status-aktiv{background:#0c4a6e;color:#38bdf8}
+  .status-abgeschlossen{background:#1e293b;color:#64748b}
+  .status-geplant{background:#1e293b;color:#94a3b8}
+  .tl-phase{font-size:.75rem;color:#64748b;margin-top:.1rem}
+  .tl-focus{font-size:.78rem;color:#94a3b8;margin-top:.15rem}
+  .tl-range{font-size:.72rem;color:#475569;margin-top:.1rem}
+  .tl-weeks{font-size:.72rem;color:#475569}
+
+  /* Race markers on timeline */
+  .tl-race-marker{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:#f59e0b;margin-top:.25rem;font-weight:600}
+
+  /* Table */
+  .table-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th{text-align:left;padding:.5rem .75rem;color:#64748b;border-bottom:1px solid #334155;font-weight:500;white-space:nowrap}
+  td{padding:.5rem .75rem;border-bottom:1px solid #1e293b;color:#cbd5e1;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#1e293b}
+  .status-pill{font-size:.7rem;padding:.15rem .5rem;border-radius:999px;font-weight:600;white-space:nowrap}
+</style>
+
+<script>
+(async () => {
+  const base = document.querySelector('meta[name="base-url"]')?.content ?? '/';
+  const url = base.replace(/\/$/, '') + '/data/derived/season_timeline.json';
+
+  let data;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('not found');
+    data = await res.json();
+  } catch {
+    document.querySelectorAll('.placeholder').forEach(el => {
+      el.textContent = 'Keine Daten verfuegbar. Pipeline noch nicht ausgefuehrt.';
+    });
+    return;
+  }
+
+  const races = data.goal_races ?? [];
+  const blocks = data.blocks ?? [];
+  const today = new Date();
+
+  // --- Aktuelle Phase ---
+  document.getElementById('current-phase').textContent = data.current_phase ?? '-';
+  document.getElementById('week-focus').textContent = data.current_week_focus ?? '-';
+
+  // --- Countdown helper ---
+  const daysUntil = dateStr => {
+    const d = new Date(dateStr);
+    const diff = Math.ceil((d - today) / 86400000);
+    return diff;
+  };
+  const fmtDate = dateStr => new Date(dateStr).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'});
+
+  // --- Races ---
+  const racesEl = document.getElementById('races');
+  if (races.length === 0) {
+    racesEl.innerHTML = '<p class="placeholder">Keine Rennen definiert.</p>';
+  } else {
+    racesEl.innerHTML = races.map(r => {
+      const key = (r.status ?? '').toLowerCase().replace(/\s+/g, '-');
+      const badgeClass = key === 'a-rennen' ? 'badge-a' : key === 'b-rennen' ? 'badge-b' : 'badge-c';
+      const days = daysUntil(r.date);
+      const cdText = days > 0 ? 'in ' + days + ' Tagen' : days === 0 ? 'Heute!' : 'vorbei';
+      return `
+        <div class="race-card ${key}">
+          <span class="race-badge ${badgeClass}">${r.status ?? ''}</span>
+          <span class="race-name">${r.name ?? ''}</span>
+          <span class="race-date">&#128197; ${fmtDate(r.date)}</span>
+          <span class="race-location">&#128205; ${r.location ?? ''}</span>
+          <div class="race-stats">
+            ${r.distance_km ? `<span class="race-stat">&#128247; ${r.distance_km} km</span>` : ''}
+            ${r.elevation_m ? `<span class="race-stat">&#9650; ${r.elevation_m} m</span>` : ''}
+          </div>
+          <span class="countdown">${cdText}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // --- Timeline ---
+  const tlEl = document.getElementById('timeline');
+  if (blocks.length === 0) {
+    tlEl.innerHTML = '<p class="placeholder">Keine Bloecke definiert.</p>';
+  } else {
+    // Find races that fall within each block
+    const raceInBlock = (block) => races.filter(r => r.date >= block.start && r.date <= block.end);
+
+    tlEl.innerHTML = blocks.map(b => {
+      const dotClass = b.status === 'aktiv' ? 'active' : b.status === 'abgeschlossen' ? 'done' : 'planned';
+      const statusClass = 'status-' + (b.status ?? 'geplant').replace(/\s+/g, '-');
+      const blockRaces = raceInBlock(b);
+      const raceHtml = blockRaces.map(r => `<span class="tl-race-marker">&#127937; ${r.name} (${fmtDate(r.date)})</span>`).join('');
+      return `
+        <div class="tl-item">
+          <span class="tl-dot ${dotClass}"></span>
+          <div class="tl-content">
+            <div class="tl-header">
+              <span class="tl-name">${b.name ?? ''}</span>
+              <span class="tl-status-badge ${statusClass}">${b.status ?? ''}</span>
+              <span class="tl-weeks">${b.weeks ?? ''} Wo.</span>
+            </div>
+            <div class="tl-phase">${b.phase ?? ''}</div>
+            <div class="tl-focus">${b.focus ?? ''}</div>
+            <div class="tl-range">${fmtDate(b.start)} – ${fmtDate(b.end)}</div>
+            ${raceHtml ? `<div>${raceHtml}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // --- Blocks Table ---
+  const tbody = document.getElementById('blocks-tbody');
+  if (blocks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="placeholder">Keine Daten.</td></tr>';
+  } else {
+    const statusPill = s => {
+      const cls = s === 'aktiv' ? 'status-aktiv' : s === 'abgeschlossen' ? 'status-abgeschlossen' : 'status-geplant';
+      return `<span class="status-pill ${cls}">${s}</span>`;
+    };
+    tbody.innerHTML = blocks.map(b => `
+      <tr>
+        <td style="font-weight:600;color:#f1f5f9">${b.name ?? ''}</td>
+        <td>${b.phase ?? ''}</td>
+        <td style="white-space:nowrap">${fmtDate(b.start)} – ${fmtDate(b.end)}</td>
+        <td>${b.weeks ?? ''}</td>
+        <td style="color:#94a3b8">${b.focus ?? ''}</td>
+        <td>${statusPill(b.status ?? 'geplant')}</td>
+      </tr>
+    `).join('');
+  }
+})();
+</script>
