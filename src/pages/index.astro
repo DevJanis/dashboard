@@ -1,29 +1,67 @@
 ---
 import Base from '../layouts/Base.astro';
 const base = import.meta.env.BASE_URL;
-let overview = null, insights = null;
-try {
-  const r1 = await fetch(base + 'data/derived/overview.json').catch(()=>null);
-  if(r1?.ok) overview = await r1.json();
-  const r2 = await fetch(base + 'data/derived/insights.json').catch(()=>null);
-  if(r2?.ok) insights = await r2.json();
-} catch {}
 ---
+
 <Base title="Overview">
   <h1>Overview</h1>
-  {overview ? (
-    <div class="card">
-      <p><strong>Status:</strong> {overview.status}</p>
-      {overview.highlights?.map(h => <p class="placeholder">{h}</p>)}
-    </div>
-  ) : (
-    <div class="card"><p class="placeholder">overview.json not yet available.</p></div>
-  )}
-  {insights && (
-    <div class="card">
-      <h2>Insights</h2>
-      {insights.training?.map(t => <p>Training: {t}</p>)}
-      {insights.recovery?.map(r => <p>Recovery: {r}</p>)}
-    </div>
-  )}
+  <div id="overview-card" class="card">
+    <p class="placeholder">Daten werden geladen…</p>
+  </div>
+  <div id="insights-card" class="card" style="display:none">
+    <h2>Insights</h2>
+    <div id="insights-content"></div>
+  </div>
 </Base>
+
+<script define:vars={{ base }}>
+  async function load() {
+    const dataUrl = (p) => base.replace(/\/$/, '') + '/' + p;
+
+    // overview.json
+    try {
+      const r = await fetch(dataUrl('data/derived/overview.json'));
+      if (r.ok) {
+        const d = await r.json();
+        document.getElementById('overview-card').innerHTML = `
+          <p><strong>Status:</strong> ${d.status ?? 'n/a'}</p>
+          ${d.current_week ? `
+            <div style="margin-top:.75rem">
+              <h2>Current week</h2>
+              <p class="placeholder">
+                Distance: ${d.current_week.distance_km ?? '—'} km ·
+                Elevation: ${d.current_week.elevation_m ?? '—'} m ·
+                Time: ${d.current_week.training_time_min ?? '—'} min ·
+                Sessions: ${d.current_week.session_count ?? '—'}
+              </p>
+            </div>` : ''}
+          ${(d.highlights ?? []).map(h => `<p class="placeholder">${h}</p>`).join('')}
+        `;
+      } else {
+        document.getElementById('overview-card').innerHTML =
+          `<p class="placeholder">overview.json nicht verfügbar (HTTP ${r.status}).</p>`;
+      }
+    } catch {
+      document.getElementById('overview-card').innerHTML =
+        `<p class="placeholder">overview.json konnte nicht geladen werden.</p>`;
+    }
+
+    // insights.json
+    try {
+      const r = await fetch(dataUrl('data/derived/insights.json'));
+      if (r.ok) {
+        const d = await r.json();
+        const el = document.getElementById('insights-card');
+        const content = document.getElementById('insights-content');
+        content.innerHTML = [
+          ...(d.training ?? []).map(t => `<p>Training: ${t}</p>`),
+          ...(d.recovery ?? []).map(r => `<p>Recovery: ${r}</p>`),
+          ...(d.performance ?? []).map(p => `<p>Performance: ${p}</p>`),
+        ].join('');
+        el.style.display = 'block';
+      }
+    } catch {}
+  }
+
+  load();
+</script>
