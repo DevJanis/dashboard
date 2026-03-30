@@ -3,7 +3,279 @@ import Base from '../layouts/Base.astro';
 ---
 <Base title="Performance">
   <h1>Performance</h1>
+
+  <!-- KPI Cards -->
+  <div class="kpi-row" id="kpi-row">
+    <div class="kpi-card">
+      <span class="kpi-label">Beste Effizienz-Woche</span>
+      <span class="kpi-value" id="kpi-best-week">-</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Effizienz-Trend</span>
+      <span class="kpi-value" id="kpi-trend">-</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Effizienz +/- (4W vs 4W)</span>
+      <span class="kpi-value" id="kpi-delta">-</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Pace-Trend</span>
+      <span class="kpi-value" id="kpi-pace-trend">-</span>
+    </div>
+  </div>
+
+  <!-- Efficiency Chart -->
   <div class="card">
-    <p class="placeholder">Placeholder - performance_trends.json will populate this page once the data pipeline runs.</p>
+    <h2>Pace/HF-Effizienz pro Woche</h2>
+    <div class="chart-wrap">
+      <canvas id="chart-efficiency"></canvas>
+    </div>
+  </div>
+
+  <!-- Long Run Chart -->
+  <div class="card">
+    <h2>Long-Run-Entwicklung (km)</h2>
+    <div class="chart-wrap">
+      <canvas id="chart-longrun"></canvas>
+    </div>
+  </div>
+
+  <!-- Pace Chart -->
+  <div class="card">
+    <h2>Durchschnitts-Pace (min/km)</h2>
+    <div class="chart-wrap">
+      <canvas id="chart-pace"></canvas>
+    </div>
+  </div>
+
+  <!-- Recent Weeks Table -->
+  <div class="card">
+    <h2>Wochenuebersicht</h2>
+    <div class="table-wrap">
+      <table id="perf-table">
+        <thead>
+          <tr>
+            <th>Woche</th>
+            <th>Pace (min/km)</th>
+            <th>&#216; HF</th>
+            <th>Effizienz</th>
+            <th>Long Run (km)</th>
+            <th>Hm</th>
+          </tr>
+        </thead>
+        <tbody id="perf-tbody">
+          <tr><td colspan="6" class="placeholder">Lade Daten...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </Base>
+
+<style>
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1rem}
+  .kpi-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:.35rem}
+  .kpi-label{font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+  .kpi-value{font-size:1.4rem;font-weight:700;color:#38bdf8}
+  .kpi-value.positive{color:#34d399}
+  .kpi-value.negative{color:#f87171}
+  .chart-wrap{position:relative;width:100%;height:220px}
+  canvas{width:100%!important;height:100%!important}
+  .table-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{text-align:left;padding:.5rem .75rem;color:#64748b;border-bottom:1px solid #334155;font-weight:500;white-space:nowrap}
+  td{padding:.5rem .75rem;border-bottom:1px solid #1e293b;color:#cbd5e1}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#1e293b}
+  .trend-up{color:#34d399}
+  .trend-down{color:#f87171}
+  .trend-flat{color:#94a3b8}
+</style>
+
+<script>
+(async () => {
+  const base = document.querySelector('meta[name="base-url"]')?.content ?? '/';
+  const dataUrl = base.replace(/\/$/, '') + '/data/derived/performance_trends.json';
+
+  let data;
+  try {
+    const res = await fetch(dataUrl);
+    if (!res.ok) throw new Error('not found');
+    data = await res.json();
+  } catch {
+    document.querySelectorAll('.placeholder').forEach(el => {
+      el.textContent = 'Keine Daten verfuegbar. Pipeline noch nicht ausgefuehrt.';
+    });
+    return;
+  }
+
+  const weeks = data.weeks ?? [];
+  const markers = data.markers ?? {};
+
+  // --- KPIs ---
+  const setKpi = (id, val, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    if (cls) el.classList.add(cls);
+  };
+
+  setKpi('kpi-best-week', markers.best_efficiency_week ?? '-');
+  const trendMap = { improving: { label: 'Verbessernd', cls: 'positive' }, stable: { label: 'Stabil', cls: '' }, declining: { label: 'Ruecklaeufig', cls: 'negative' } };
+  const hrTrend = trendMap[markers.trend_hr_efficiency] ?? { label: markers.trend_hr_efficiency ?? '-', cls: '' };
+  setKpi('kpi-trend', hrTrend.label, hrTrend.cls);
+  const delta = markers.efficiency_delta_pct;
+  if (delta != null) setKpi('kpi-delta', (delta > 0 ? '+' : '') + delta.toFixed(1) + '%', delta >= 0 ? 'positive' : 'negative');
+  const paceTrend = trendMap[markers.trend_pace] ?? { label: markers.trend_pace ?? '-', cls: '' };
+  setKpi('kpi-pace-trend', paceTrend.label, paceTrend.cls);
+
+  // --- Chart helper ---
+  function drawLineChart(canvasId, labels, datasets) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.parentElement.clientWidth || 600;
+    const H = 220;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const pad = { top: 16, right: 20, bottom: 36, left: 48 };
+    const w = W - pad.left - pad.right;
+    const h = H - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // collect all values
+    const allVals = datasets.flatMap(d => d.values);
+    const minV = Math.min(...allVals);
+    const maxV = Math.max(...allVals);
+    const range = maxV - minV || 1;
+
+    const xStep = w / (labels.length - 1 || 1);
+    const toX = i => pad.left + i * xStep;
+    const toY = v => pad.top + h - ((v - minV) / range) * h;
+
+    // grid lines
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (h / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + w, y); ctx.stroke();
+      const val = (maxV - (range / 4) * i).toFixed(2);
+      ctx.fillStyle = '#64748b'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(val, pad.left - 6, y + 4);
+    }
+
+    // x labels
+    ctx.fillStyle = '#64748b'; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    labels.forEach((l, i) => ctx.fillText(l, toX(i), H - 8));
+
+    // lines
+    datasets.forEach(ds => {
+      ctx.strokeStyle = ds.color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ds.values.forEach((v, i) => i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)));
+      ctx.stroke();
+      // dots
+      ds.values.forEach((v, i) => {
+        ctx.beginPath();
+        ctx.arc(toX(i), toY(v), 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = ds.color;
+        ctx.fill();
+      });
+    });
+  }
+
+  function drawBarChart(canvasId, labels, values, color) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.parentElement.clientWidth || 600;
+    const H = 220;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const pad = { top: 16, right: 20, bottom: 36, left: 48 };
+    const w = W - pad.left - pad.right;
+    const h = H - pad.top - pad.bottom;
+    ctx.clearRect(0, 0, W, H);
+
+    const maxV = Math.max(...values);
+    const barW = (w / labels.length) * 0.6;
+    const gap = w / labels.length;
+
+    // grid
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (h / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + w, y); ctx.stroke();
+      const val = (maxV - (maxV / 4) * i).toFixed(1);
+      ctx.fillStyle = '#64748b'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(val, pad.left - 6, y + 4);
+    }
+
+    values.forEach((v, i) => {
+      const x = pad.left + i * gap + (gap - barW) / 2;
+      const barH = (v / maxV) * h;
+      const y = pad.top + h - barH;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, barH, 3);
+      ctx.fill();
+      // label
+      ctx.fillStyle = '#64748b'; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(labels[i], x + barW / 2, H - 8);
+      // value on bar
+      ctx.fillStyle = '#e2e8f0'; ctx.font = '9px system-ui';
+      ctx.fillText(v.toFixed(1), x + barW / 2, y - 4);
+    });
+  }
+
+  if (weeks.length === 0) return;
+
+  const labels = weeks.map(w => w.week);
+
+  // Efficiency chart
+  drawLineChart('chart-efficiency', labels, [
+    { values: weeks.map(w => w.efficiency_index), color: '#38bdf8' }
+  ]);
+
+  // Long run chart
+  drawBarChart('chart-longrun', labels, weeks.map(w => w.long_run_km), '#818cf8');
+
+  // Pace chart (lower = better, so invert display logic is ok)
+  drawLineChart('chart-pace', labels, [
+    { values: weeks.map(w => w.pace_per_km), color: '#34d399' }
+  ]);
+
+  // Table
+  const tbody = document.getElementById('perf-tbody');
+  if (tbody) {
+    tbody.innerHTML = weeks.map((w, i) => {
+      const prevEff = i > 0 ? weeks[i-1].efficiency_index : null;
+      const effTrend = prevEff == null ? '' : w.efficiency_index > prevEff
+        ? '<span class="trend-up">&#8593;</span>'
+        : w.efficiency_index < prevEff
+          ? '<span class="trend-down">&#8595;</span>'
+          : '<span class="trend-flat">&#8594;</span>';
+      return `<tr>
+        <td>${w.week}</td>
+        <td>${w.pace_per_km.toFixed(2)}</td>
+        <td>${w.avg_hr}</td>
+        <td>${(w.efficiency_index * 100).toFixed(0)}% ${effTrend}</td>
+        <td>${w.long_run_km.toFixed(1)}</td>
+        <td>${w.long_run_elevation}</td>
+      </tr>`;
+    }).join('');
+  }
+})();
+</script>
