@@ -3,7 +3,189 @@ import Base from '../layouts/Base.astro';
 ---
 <Base title="Plan">
   <h1>Plan</h1>
+
+  <!-- Block Info -->
+  <div class="block-header card" id="block-header">
+    <div class="block-meta">
+      <div>
+        <span class="block-label">Block</span>
+        <span class="block-value" id="block-name">-</span>
+      </div>
+      <div>
+        <span class="block-label">Phase</span>
+        <span class="block-value" id="block-phase">-</span>
+      </div>
+      <div>
+        <span class="block-label">Zeitraum</span>
+        <span class="block-value" id="block-range">-</span>
+      </div>
+    </div>
+    <div class="block-focus" id="block-focus">-</div>
+    <div class="week-focus" id="week-focus">-</div>
+  </div>
+
+  <!-- Key Sessions -->
   <div class="card">
-    <p class="placeholder">Placeholder - training_plan_current.json will populate this page once the data pipeline runs.</p>
+    <h2>Schluesseleinheiten</h2>
+    <div class="key-sessions" id="key-sessions">
+      <p class="placeholder">Lade Daten...</p>
+    </div>
+  </div>
+
+  <!-- 14-Day Calendar -->
+  <div class="card">
+    <h2>14-Tage-Plan</h2>
+    <div class="calendar" id="calendar">
+      <p class="placeholder">Lade Daten...</p>
+    </div>
+  </div>
+
+  <!-- Wochenzusammenfassung -->
+  <div class="card">
+    <h2>Wochenzusammenfassung</h2>
+    <div class="week-summary-grid" id="week-summary">
+      <p class="placeholder">Lade Daten...</p>
+    </div>
   </div>
 </Base>
+
+<style>
+  /* Block Header */
+  .block-header{display:flex;flex-direction:column;gap:.75rem}
+  .block-meta{display:flex;gap:2rem;flex-wrap:wrap}
+  .block-label{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.15rem}
+  .block-value{font-size:1rem;font-weight:600;color:#f1f5f9}
+  .block-focus{font-size:.9rem;color:#94a3b8;border-left:3px solid #38bdf8;padding-left:.75rem;margin-top:.25rem}
+  .week-focus{font-size:.8rem;color:#64748b;font-style:italic}
+
+  /* Key Sessions */
+  .key-sessions{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem}
+  .key-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:.4rem}
+  .key-day{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+  .key-type{font-size:.78rem;font-weight:600;padding:.15rem .5rem;border-radius:4px;display:inline-block;width:fit-content}
+  .key-label{font-size:.9rem;color:#e2e8f0;font-weight:500}
+  .key-meta{font-size:.78rem;color:#94a3b8;display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.25rem}
+  .key-meta span{display:flex;align-items:center;gap:.25rem}
+
+  /* Calendar */
+  .calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem}
+  @media(max-width:640px){.calendar{grid-template-columns:repeat(2,1fr)}}
+  .cal-day{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:.6rem .5rem;display:flex;flex-direction:column;gap:.3rem;min-height:80px;position:relative}
+  .cal-day.today{border-color:#38bdf8;box-shadow:0 0 0 1px #38bdf8}
+  .cal-day.rest{opacity:.55}
+  .cal-weekday{font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+  .cal-date{font-size:.75rem;color:#94a3b8}
+  .cal-type-badge{font-size:.65rem;font-weight:600;padding:.1rem .35rem;border-radius:3px;display:inline-block;margin-top:.2rem;width:fit-content}
+  .cal-label{font-size:.7rem;color:#cbd5e1;line-height:1.3;margin-top:.1rem}
+  .cal-dur{font-size:.65rem;color:#64748b;margin-top:auto}
+  .key-star{position:absolute;top:.4rem;right:.4rem;color:#fbbf24;font-size:.7rem}
+
+  /* Week summary */
+  .week-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem}
+  .wscard{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:.85rem 1rem}
+  .wscard-label{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem}
+  .wscard-value{font-size:1.25rem;font-weight:700;color:#38bdf8}
+  .wscard-sub{font-size:.75rem;color:#94a3b8;margin-top:.15rem}
+
+  /* Intensity colors */
+  .int-hoch{background:#7f1d1d;color:#fca5a5}
+  .int-mittel-hoch{background:#78350f;color:#fcd34d}
+  .int-mittel{background:#1e3a5f;color:#7dd3fc}
+  .int-niedrig{background:#14532d;color:#86efac}
+  .int-keine{background:#1e293b;color:#64748b}
+</style>
+
+<script>
+(async () => {
+  const base = document.querySelector('meta[name="base-url"]')?.content ?? '/';
+  const url = base.replace(/\/$/, '') + '/data/derived/training_plan_current.json';
+
+  let data;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('not found');
+    data = await res.json();
+  } catch {
+    document.querySelectorAll('.placeholder').forEach(el => {
+      el.textContent = 'Keine Daten verfuegbar. Pipeline noch nicht ausgefuehrt.';
+    });
+    return;
+  }
+
+  const block = data.block ?? {};
+  const days = data.days ?? [];
+  const keySessions = data.key_sessions ?? [];
+
+  // --- Intensity CSS class ---
+  const intClass = i => 'int-' + (i ?? 'keine').replace(/\s+/g, '-').toLowerCase();
+
+  // --- Block Header ---
+  document.getElementById('block-name').textContent = block.name ?? '-';
+  document.getElementById('block-phase').textContent = block.phase ?? '-';
+  const from = block.valid_from ? new Date(block.valid_from).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'}) : '';
+  const until = block.valid_until ? new Date(block.valid_until).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'}) : '';
+  document.getElementById('block-range').textContent = from && until ? from + ' - ' + until : '-';
+  document.getElementById('block-focus').textContent = block.focus ?? '';
+  document.getElementById('week-focus').textContent = block.week_focus ? 'Wochenfokus: ' + block.week_focus : '';
+
+  // --- Key Sessions ---
+  const ksEl = document.getElementById('key-sessions');
+  if (keySessions.length === 0) {
+    ksEl.innerHTML = '<p class="placeholder">Keine Schluesseleinheiten definiert.</p>';
+  } else {
+    ksEl.innerHTML = keySessions.map(s => `
+      <div class="key-card">
+        <span class="key-day">${s.day ?? ''}</span>
+        <span class="key-type ${intClass(s.intensity)}">${s.type ?? ''}</span>
+        <span class="key-label">${s.label ?? ''}</span>
+        <div class="key-meta">
+          ${s.duration_min ? `<span>&#9201; ${s.duration_min} min</span>` : ''}
+          ${s.elevation_m ? `<span>&#9650; ${s.elevation_m} m</span>` : ''}
+          ${s.intensity ? `<span>&#9889; ${s.intensity}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // --- Calendar ---
+  const calEl = document.getElementById('calendar');
+  if (days.length === 0) {
+    calEl.innerHTML = '<p class="placeholder">Keine Tagesplanung verfuegbar.</p>';
+  } else {
+    calEl.innerHTML = days.map(d => {
+      const isRest = d.type === 'Ruhetag';
+      const dateStr = d.date ? new Date(d.date).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'}) : '';
+      return `
+        <div class="cal-day${d.is_today ? ' today' : ''}${isRest ? ' rest' : ''}">
+          ${d.is_key ? '<span class="key-star">&#9733;</span>' : ''}
+          <span class="cal-weekday">${d.weekday ?? ''}</span>
+          <span class="cal-date">${dateStr}</span>
+          <span class="cal-type-badge ${intClass(d.intensity)}">${d.type ?? ''}</span>
+          <span class="cal-label">${d.label ?? ''}</span>
+          ${d.duration_min > 0 ? `<span class="cal-dur">&#9201; ${d.duration_min} min${d.elevation_m ? ' &nbsp;&#9650; ' + d.elevation_m + 'm' : ''}</span>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // --- Week Summary (Woche 1: erste 7 Tage) ---
+  const wsEl = document.getElementById('week-summary');
+  const w1 = days.slice(0, 7);
+  const w2 = days.slice(7, 14);
+  const summarize = (wdays, label) => {
+    const sessions = wdays.filter(d => d.duration_min > 0);
+    const totalMin = sessions.reduce((s, d) => s + (d.duration_min || 0), 0);
+    const totalElev = sessions.reduce((s, d) => s + (d.elevation_m || 0), 0);
+    const keyCnt = sessions.filter(d => d.is_key).length;
+    return { label, sessions: sessions.length, totalMin, totalElev, keyCnt };
+  };
+  const weeks = [summarize(w1, 'Woche 1'), summarize(w2, 'Woche 2')];
+  wsEl.innerHTML = weeks.map(w => `
+    <div class="wscard">
+      <div class="wscard-label">${w.label}</div>
+      <div class="wscard-value">${w.sessions} Einheiten</div>
+      <div class="wscard-sub">&#9201; ${w.totalMin} min &nbsp; &#9650; ${w.totalElev} m &nbsp; &#9733; ${w.keyCnt} Key</div>
+    </div>
+  `).join('');
+})();
+</script>
