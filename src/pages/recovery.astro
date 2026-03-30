@@ -1,9 +1,197 @@
 ---
 import Base from '../layouts/Base.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
+
 <Base title="Recovery">
   <h1>Recovery</h1>
-  <div class="card">
-    <p class="placeholder">Placeholder - recovery_summary.json will populate this page once the data pipeline runs.</p>
+
+  <!-- KPI Cards (letzte Nacht / heute) -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem">
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">HRV (RMSSD)</p>
+      <p id="kpi-hrv" style="font-size:1.6rem;font-weight:700;color:#34d399">—</p>
+      <p id="kpi-hrv-base" style="color:#64748b;font-size:.75rem">Ø 28d: —</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Ruhepuls</p>
+      <p id="kpi-hr" style="font-size:1.6rem;font-weight:700;color:#f472b6">—</p>
+      <p id="kpi-hr-base" style="color:#64748b;font-size:.75rem">Ø 28d: —</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Sleep Score</p>
+      <p id="kpi-sleep" style="font-size:1.6rem;font-weight:700;color:#a78bfa">—</p>
+      <p id="kpi-sleep-base" style="color:#64748b;font-size:.75rem">Ø 28d: —</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Schlafdauer</p>
+      <p id="kpi-sleeph" style="font-size:1.6rem;font-weight:700;color:#60a5fa">—</p>
+      <p style="color:#64748b;font-size:.75rem">Stunden</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Readiness</p>
+      <p id="kpi-ready" style="font-size:1.6rem;font-weight:700;color:#fb923c">—</p>
+      <p id="kpi-ready-base" style="color:#64748b;font-size:.75rem">Ø 28d: —</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:.25rem">Body Battery</p>
+      <p id="kpi-bb" style="font-size:1.6rem;font-weight:700;color:#facc15">—</p>
+      <p style="color:#64748b;font-size:.75rem">Start heute</p>
+    </div>
   </div>
+
+  <!-- Status Badge -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <p style="color:#94a3b8;font-size:.85rem">Training Status (heute): <strong id="training-status" style="color:#e2e8f0">—</strong></p>
+    <p style="color:#94a3b8;font-size:.85rem;margin-top:.4rem">HRV Status: <strong id="hrv-status" style="color:#e2e8f0">—</strong></p>
+    <p style="color:#94a3b8;font-size:.85rem;margin-top:.4rem">Datum: <strong id="last-date" style="color:#64748b">—</strong></p>
+  </div>
+
+  <!-- Chart HRV -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">HRV RMSSD — letzte 28 Tage</h2>
+    <div id="chart-hrv" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Chart Ruhepuls -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Ruhepuls — letzte 28 Tage</h2>
+    <div id="chart-hr" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Chart Sleep Score -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Sleep Score — letzte 28 Tage</h2>
+    <div id="chart-sleep" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Chart Body Battery -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Body Battery (Start) — letzte 28 Tage</h2>
+    <div id="chart-bb" style="width:100%;overflow-x:auto"></div>
+  </div>
+
+  <!-- Detailtabelle -->
+  <div class="card">
+    <h2 style="margin-bottom:1rem">Letzte 14 Tage im Detail</h2>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="border-bottom:1px solid #334155;color:#94a3b8">
+            <th style="text-align:left;padding:.4rem .5rem">Datum</th>
+            <th style="text-align:right;padding:.4rem .5rem">HRV</th>
+            <th style="text-align:right;padding:.4rem .5rem">RHR</th>
+            <th style="text-align:right;padding:.4rem .5rem">Sleep</th>
+            <th style="text-align:right;padding:.4rem .5rem">h</th>
+            <th style="text-align:right;padding:.4rem .5rem">Readiness</th>
+            <th style="text-align:right;padding:.4rem .5rem">BB</th>
+            <th style="text-align:left;padding:.4rem .5rem">Status</th>
+          </tr>
+        </thead>
+        <tbody id="rec-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p id="loading-msg" class="placeholder" style="text-align:center;padding:2rem">Daten werden geladen…</p>
 </Base>
+
+<script define:vars={{ base }}>
+const dataUrl = (p) => base + '/' + p;
+
+function barChart(containerId, days, key, color, baseline) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const vals = days.map(d => d[key] ?? 0);
+  const max = Math.max(...vals, 1);
+  const W = 28, H = 100, gap = 3;
+  const total = days.length * (W + gap) - gap;
+
+  let svg = `<svg viewBox="0 0 ${total} ${H + 24}" style="min-width:${total}px;width:100%;display:block">`;
+
+  // Baseline-Linie
+  if (baseline) {
+    const by = H - (baseline / max) * H;
+    svg += `<line x1="0" y1="${by}" x2="${total}" y2="${by}" stroke="#475569" stroke-width="1" stroke-dasharray="4,3"/>`;
+  }
+
+  days.forEach((d, i) => {
+    const x = i * (W + gap);
+    const val = d[key] ?? 0;
+    const barH = Math.max(2, (val / max) * H);
+    const y = H - barH;
+    const label = d.date.slice(5); // MM-DD
+    svg += `<rect x="${x}" y="${y}" width="${W}" height="${barH}" rx="2" fill="${color}" opacity="0.8"/>`;
+    svg += `<text x="${x + W/2}" y="${H + 14}" text-anchor="middle" fill="#475569" font-size="8">${label}</text>`;
+    svg += `<text x="${x + W/2}" y="${y - 3}" text-anchor="middle" fill="#cbd5e1" font-size="8">${Math.round(val)}</text>`;
+  });
+  svg += '</svg>';
+  el.innerHTML = svg;
+}
+
+function readinessColor(v) {
+  if (v >= 80) return '#34d399';
+  if (v >= 50) return '#facc15';
+  return '#f87171';
+}
+
+async function load() {
+  const msg = document.getElementById('loading-msg');
+  try {
+    const r = await fetch(dataUrl('data/derived/recovery_summary.json'));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const days = data.days ?? [];
+    if (!days.length) throw new Error('Keine Tages-Daten');
+    msg.style.display = 'none';
+
+    const last = days[days.length - 1];
+    const b = data.baselines ?? {};
+
+    // KPIs
+    document.getElementById('kpi-hrv').textContent   = Math.round(last.hrv_rmssd ?? 0);
+    document.getElementById('kpi-hrv-base').textContent = `Ø 28d: ${Math.round(b.hrv_rmssd_28d_mean_latest ?? 0)}`;
+    document.getElementById('kpi-hr').textContent    = Math.round(last.resting_hr ?? 0);
+    document.getElementById('kpi-hr-base').textContent  = `Ø 28d: ${Math.round(b.resting_hr_28d_mean_latest ?? 0)}`;
+    document.getElementById('kpi-sleep').textContent = Math.round(last.sleep_score ?? 0);
+    document.getElementById('kpi-sleep-base').textContent = `Ø 28d: ${Math.round(b.sleep_score_28d_mean_latest ?? 0)}`;
+    document.getElementById('kpi-sleeph').textContent = (last.sleep_hours ?? 0).toFixed(1);
+    document.getElementById('kpi-ready').textContent = Math.round(last.training_readiness ?? 0);
+    document.getElementById('kpi-ready-base').textContent = `Ø 28d: ${Math.round(b.training_readiness_28d_mean_latest ?? 0)}`;
+    document.getElementById('kpi-bb').textContent    = Math.round(last.body_battery_start ?? 0);
+
+    document.getElementById('training-status').textContent = (last.training_status ?? '—').replace(/_/g, ' ');
+    document.getElementById('hrv-status').textContent      = last.hrv_status ?? '—';
+    document.getElementById('last-date').textContent       = last.date;
+
+    // Readiness-Farbe
+    document.getElementById('kpi-ready').style.color = readinessColor(last.training_readiness ?? 0);
+
+    // Charts: letzte 28 Tage
+    const recent28 = days.slice(-28);
+    barChart('chart-hrv',   recent28, 'hrv_rmssd',         '#34d399', b.hrv_rmssd_28d_mean_latest);
+    barChart('chart-hr',    recent28, 'resting_hr',         '#f472b6', b.resting_hr_28d_mean_latest);
+    barChart('chart-sleep', recent28, 'sleep_score',        '#a78bfa', b.sleep_score_28d_mean_latest);
+    barChart('chart-bb',    recent28, 'body_battery_start', '#facc15', null);
+
+    // Tabelle: letzte 14 Tage
+    const recent14 = days.slice(-14).reverse();
+    document.getElementById('rec-tbody').innerHTML = recent14.map((d, i) => `
+      <tr style="border-bottom:1px solid #1e293b;${i === 0 ? 'background:#1e2d3a' : ''}">
+        <td style="padding:.35rem .5rem;color:${i === 0 ? '#60a5fa' : '#e2e8f0'}">${d.date}${i === 0 ? ' ◀' : ''}</td>
+        <td style="text-align:right;padding:.35rem .5rem;color:#34d399">${Math.round(d.hrv_rmssd ?? 0)}</td>
+        <td style="text-align:right;padding:.35rem .5rem;color:#f472b6">${Math.round(d.resting_hr ?? 0)}</td>
+        <td style="text-align:right;padding:.35rem .5rem">${Math.round(d.sleep_score ?? 0)}</td>
+        <td style="text-align:right;padding:.35rem .5rem">${(d.sleep_hours ?? 0).toFixed(1)}</td>
+        <td style="text-align:right;padding:.35rem .5rem;color:${readinessColor(d.training_readiness ?? 0)}">${Math.round(d.training_readiness ?? 0)}</td>
+        <td style="text-align:right;padding:.35rem .5rem;color:#facc15">${Math.round(d.body_battery_start ?? 0)}</td>
+        <td style="padding:.35rem .5rem;color:#64748b;font-size:.78rem">${(d.training_status ?? '').replace(/_/g, ' ')}</td>
+      </tr>`).join('');
+
+  } catch(e) {
+    msg.textContent = `Fehler beim Laden: ${e.message}`;
+  }
+}
+
+load();
+</script>
